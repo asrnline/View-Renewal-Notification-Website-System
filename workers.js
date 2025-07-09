@@ -172,6 +172,17 @@ const loginPage = `
       border-color: #667eea;
       box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.25);
     }
+    .uuid-banner {
+      background-color: #f7fafc;
+      border-left: 4px solid #4f46e5;
+      padding: 0.5rem 1rem;
+      margin-bottom: 1rem;
+      border-radius: 0.375rem;
+    }
+    .uuid-banner.required {
+      border-left-color: #ef4444;
+      background-color: #fee2e2;
+    }
   </style>
 </head>
 <body class="login-container flex items-center justify-center">
@@ -198,6 +209,15 @@ const loginPage = `
           class="input-field w-full px-4 py-3 rounded-lg text-gray-700 focus:outline-none">
       </div>
       
+      <div id="uuidFieldContainer" class="hidden">
+        <label for="verificationUuid" class="block text-sm font-medium text-gray-700 mb-1">
+          <i class="fas fa-fingerprint mr-2"></i>安全验证码
+        </label>
+        <input type="text" id="verificationUuid" name="verificationUuid"
+          class="input-field w-full px-4 py-3 rounded-lg text-gray-700 focus:outline-none"
+          placeholder="请输入安全验证码">
+      </div>
+      
       <button type="submit" 
         class="btn-primary w-full py-3 rounded-lg text-white font-medium focus:outline-none">
         <i class="fas fa-sign-in-alt mr-2"></i>登录
@@ -208,29 +228,90 @@ const loginPage = `
   </div>
   
   <script>
-    document.getElementById('loginForm').addEventListener('submit', async (e) => {
-      e.preventDefault();
-      const username = document.getElementById('username').value;
-      const password = document.getElementById('password').value;
+          // 页面加载时检查是否已经设置了安全验证
+      // 我们不再在页面加载时显示验证码输入框，而是仅当用户输入正确的用户名和密码后才检查
       
-      const button = e.target.querySelector('button');
-      const originalContent = button.innerHTML;
-      button.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i>登录中...';
-      button.disabled = true;
-      
-      try {
-        const response = await fetch('/api/login', {
+      document.getElementById('loginForm').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const username = document.getElementById('username').value;
+        const password = document.getElementById('password').value;
+        let verificationUuid = document.getElementById('verificationUuid').value;
+        
+        const button = e.target.querySelector('button');
+        const originalContent = button.innerHTML;
+        button.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i>登录中...';
+        button.disabled = true;
+        
+        try {
+          // 第一步：检查是否需要安全验证
+          const checkResponse = await fetch('/api/check-auth', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ username, password })
+          });
+          
+          const checkResult = await checkResponse.json();
+          
+          // 如果需要验证码但尚未输入，显示验证码输入框
+          if (checkResult.needVerification && !verificationUuid) {
+            // 清除用户名密码之外的错误信息
+            document.getElementById('errorMsg').textContent = '';
+            // 显示验证码输入框
+            document.getElementById('uuidFieldContainer').classList.remove('hidden');
+            document.getElementById('verificationUuid').required = true;
+            document.getElementById('verificationUuid').focus();
+            // 提示用户输入验证码
+            const message = document.createElement('div');
+            message.className = 'bg-blue-50 border-l-4 border-blue-500 p-4 my-3 rounded';
+            message.innerHTML = '<div class="flex"><div class="flex-shrink-0"><i class="fas fa-info-circle text-blue-500"></i></div>' +
+                                '<div class="ml-3"><p class="text-sm text-blue-700">请输入安全验证码完成登录</p></div></div>';
+            
+            // 将提示插入到验证码输入框之前
+            const container = document.getElementById('uuidFieldContainer');
+            container.parentNode.insertBefore(message, container);
+            
+            button.innerHTML = originalContent;
+            button.disabled = false;
+            return;
+          }
+        
+        // 第二步：进行完整的登录验证
+        const loginResponse = await fetch('/api/login', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ username, password })
+          body: JSON.stringify({ username, password, verificationUuid })
         });
         
-        const result = await response.json();
+        const loginResult = await loginResponse.json();
         
-        if (result.success) {
+        if (loginResult.success) {
           window.location.href = '/admin';
         } else {
-          document.getElementById('errorMsg').textContent = result.message || '用户名或密码错误';
+          // 如果返回需要验证码，显示验证码输入框
+          if (loginResult.needVerification) {
+            // 清除任何已有的提示消息
+            const existingMessages = document.querySelectorAll('.bg-blue-50');
+            existingMessages.forEach(msg => msg.remove());
+              
+            document.getElementById('uuidFieldContainer').classList.remove('hidden');
+            document.getElementById('verificationUuid').required = true;
+            document.getElementById('verificationUuid').focus();
+              
+            // 添加更友好的验证码提示
+            const message = document.createElement('div');
+            message.className = 'bg-blue-50 border-l-4 border-blue-500 p-4 my-3 rounded';
+            message.innerHTML = '<div class="flex"><div class="flex-shrink-0"><i class="fas fa-info-circle text-blue-500"></i></div>' +
+                                '<div class="ml-3"><p class="text-sm text-blue-700">请输入安全验证码完成登录</p></div></div>';
+              
+            // 将提示插入到验证码输入框之前
+            const container = document.getElementById('uuidFieldContainer');
+            container.parentNode.insertBefore(message, container);
+          } else {
+            // 确保验证码输入框隐藏（除非需要显示）
+            document.getElementById('uuidFieldContainer').classList.add('hidden');
+            document.getElementById('verificationUuid').required = false;
+          }
+          document.getElementById('errorMsg').textContent = loginResult.message || '登录失败，请检查您的凭据';
           button.innerHTML = originalContent;
           button.disabled = false;
         }
@@ -1124,18 +1205,39 @@ const configPage = `
               <p class="mt-1 text-sm text-gray-500">留空表示不修改当前密码</p>
             </div>
           </div>
+          
+          <div class="mt-6 border-t border-gray-200 pt-4">
+            <h4 class="font-medium text-indigo-600 mb-2">安全验证设置</h4>
+            <p class="text-sm text-gray-500 mb-3">设置安全验证码可以提供额外的保护，防止他人通过密码登录到您的系统。启用后，验证码仅在用户名和密码验证通过后才会提示输入。</p>
+            
+            <label for="verificationUuid" class="block text-sm font-medium text-gray-700">安全验证码</label>
+            <div class="mt-1 flex">
+              <input type="text" id="verificationUuid" placeholder="设置安全验证码作为额外的身份验证" class="block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm">
+              <button type="button" id="generateUuidBtn" class="ml-2 px-3 py-2 border border-gray-300 bg-gray-50 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-100">
+                <i class="fas fa-sync-alt"></i> 生成
+              </button>
+            </div>
+            <div class="mt-3">
+              <div class="flex items-center">
+                <input type="checkbox" id="uuidRequired" class="h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-300 rounded">
+                <label for="uuidRequired" class="ml-2 block text-sm text-gray-700">启用安全验证</label>
+              </div>
+              <p class="mt-2 text-xs text-gray-500 italic">安全验证码会在用户名和密码正确后才提示输入，避免暴露验证状态，提高安全性。建议使用复杂的验证码并定期更换。</p>
+            </div>
+          </div>
         </div>
         
         <div class="border-b border-gray-200 pb-6">
           <h3 class="text-lg font-medium text-gray-900 mb-4">界面设置</h3>
           <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div>
-              <label for="loginBgColor" class="block text-sm font-medium text-gray-700">登录页面背景颜色</label>
-              <div class="mt-1 flex items-center">
-                <input type="color" id="loginBgColor" class="h-8 w-8 rounded border border-gray-300 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500">
-                <input type="text" id="loginBgColorText" placeholder="#667eea,#764ba2" class="ml-2 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm">
-              </div>
-              <p class="mt-1 text-sm text-gray-500">可以使用单色（如 #667eea）或渐变色（如 #667eea,#764ba2）</p>
+                              <label for="loginBgColor" class="block text-sm font-medium text-gray-700">登录页面背景颜色</label>
+                <div class="mt-1 flex items-center">
+                  <input type="color" id="loginBgColor" class="h-8 w-8 rounded border border-gray-300 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500">
+                  <label for="loginBgColorText" class="sr-only">背景色代码</label>
+                  <input type="text" id="loginBgColorText" placeholder="#667eea,#764ba2" class="ml-2 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm">
+                </div>
+                <p class="mt-1 text-sm text-gray-500">可以使用单色（如 #667eea）或渐变色（如 #667eea,#764ba2）</p>
             </div>
             <div>
               <label for="loginBgPreview" class="block text-sm font-medium text-gray-700">预览效果</label>
@@ -1307,6 +1409,15 @@ const configPage = `
       }, duration);
     }
 
+    // 生成UUID v4
+    function generateUUIDv4() {
+      return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+        const r = Math.random() * 16 | 0;
+        const v = c === 'x' ? r : (r & 0x3 | 0x8);
+        return v.toString(16);
+      });
+    }
+    
     async function loadConfig() {
       try {
         const response = await fetch('/api/config');
@@ -1324,6 +1435,8 @@ const configPage = `
         document.getElementById('wecomAgentId').value = config.WECOM_AGENT_ID || '';
         document.getElementById('wecomAppSecret').value = config.WECOM_APP_SECRET || '';
         document.getElementById('wecomToUser').value = config.WECOM_TO_USER || '@all';
+        document.getElementById('verificationUuid').value = config.VERIFICATION_UUID || '';
+        document.getElementById('uuidRequired').checked = !!config.VERIFICATION_UUID;
         
         // 加载背景颜色设置
         const loginBgColor = config.LOGIN_BG_COLOR || '#667eea,#764ba2';
@@ -1337,6 +1450,14 @@ const configPage = `
         });
 
         toggleNotificationConfigs(enabledNotifiers);
+        
+        // 设置UUID生成按钮监听
+        document.getElementById('generateUuidBtn').addEventListener('click', () => {
+          const uuidField = document.getElementById('verificationUuid');
+          uuidField.value = generateUUIDv4();
+          document.getElementById('uuidRequired').checked = true;
+          showToast('已生成新的UUID验证码', 'success');
+        });
       } catch (error) {
         console.error('加载配置失败:', error);
         showToast('加载配置失败，请刷新页面重试', 'error');
@@ -1424,22 +1545,37 @@ const configPage = `
         return;
       }
 
-      const config = {
-        ADMIN_USERNAME: document.getElementById('adminUsername').value.trim(),
-        TG_BOT_TOKEN: document.getElementById('tgBotToken').value.trim(),
-        TG_CHAT_ID: document.getElementById('tgChatId').value.trim(),
-        NOTIFYX_API_KEY: document.getElementById('notifyxApiKey').value.trim(),
-        WEBHOOK_URL: document.getElementById('webhookUrl').value.trim(),
-        WEBHOOK_METHOD: document.getElementById('webhookMethod').value,
-        WEBHOOK_HEADERS: document.getElementById('webhookHeaders').value.trim(),
-        WEBHOOK_TEMPLATE: document.getElementById('webhookTemplate').value.trim(),
-        WECOM_CORP_ID: document.getElementById('wecomCorpId').value.trim(),
-        WECOM_APP_SECRET: document.getElementById('wecomAppSecret').value.trim(),
-        WECOM_AGENT_ID: document.getElementById('wecomAgentId').value.trim(),
-        WECOM_TO_USER: document.getElementById('wecomToUser').value.trim() || '@all',
-        LOGIN_BG_COLOR: document.getElementById('loginBgColorText').value.trim(),
-        ENABLED_NOTIFIERS: enabledNotifiers
-      };
+                // 处理安全验证码
+        let verificationUuid = document.getElementById('verificationUuid').value.trim();
+        const uuidRequired = document.getElementById('uuidRequired').checked;
+        
+        // 如果启用了安全验证但没有设置值，生成一个新的
+        if (uuidRequired && !verificationUuid) {
+          verificationUuid = generateUUIDv4();
+          document.getElementById('verificationUuid').value = verificationUuid;
+          showToast('已自动生成安全验证码', 'info');
+        } else if (!uuidRequired) {
+          // 如果未启用，清空验证码值
+          verificationUuid = '';
+        }
+        
+        const config = {
+          ADMIN_USERNAME: document.getElementById('adminUsername').value.trim(),
+          TG_BOT_TOKEN: document.getElementById('tgBotToken').value.trim(),
+          TG_CHAT_ID: document.getElementById('tgChatId').value.trim(),
+          NOTIFYX_API_KEY: document.getElementById('notifyxApiKey').value.trim(),
+          WEBHOOK_URL: document.getElementById('webhookUrl').value.trim(),
+          WEBHOOK_METHOD: document.getElementById('webhookMethod').value,
+          WEBHOOK_HEADERS: document.getElementById('webhookHeaders').value.trim(),
+          WEBHOOK_TEMPLATE: document.getElementById('webhookTemplate').value.trim(),
+          WECOM_CORP_ID: document.getElementById('wecomCorpId').value.trim(),
+          WECOM_APP_SECRET: document.getElementById('wecomAppSecret').value.trim(),
+          WECOM_AGENT_ID: document.getElementById('wecomAgentId').value.trim(),
+          WECOM_TO_USER: document.getElementById('wecomToUser').value.trim() || '@all',
+          LOGIN_BG_COLOR: document.getElementById('loginBgColorText').value.trim(),
+          VERIFICATION_UUID: verificationUuid, // 直接使用处理后的验证码值
+          ENABLED_NOTIFIERS: enabledNotifiers
+        };
 
       const passwordField = document.getElementById('adminPassword');
       if (passwordField.value.trim()) {
@@ -1619,27 +1755,80 @@ const api = {
     
     const config = await getConfig(env);
     
-    if (path === '/login' && method === 'POST') {
+    // 我们保留这个API端点，但不再在页面加载时调用它
+    // 而是在登录流程中通过check-auth间接实现验证
+    if (path === '/verification-enabled' && method === 'GET') {
+      return new Response(
+        JSON.stringify({ enabled: !!config.VERIFICATION_UUID }),
+        { headers: { 'Content-Type': 'application/json' } }
+      );
+    }
+    
+    if (path === '/check-auth' && method === 'POST') {
       const body = await request.json();
       
-      if (body.username === config.ADMIN_USERNAME && body.password === config.ADMIN_PASSWORD) {
-        const token = await generateJWT(body.username, config.JWT_SECRET);
-        
+      // 只有当用户名和密码正确，且设置了验证码时，才需要进行验证
+      if (body.username === config.ADMIN_USERNAME && 
+          body.password === config.ADMIN_PASSWORD && 
+          config.VERIFICATION_UUID) {
         return new Response(
-          JSON.stringify({ success: true }),
-          {
-            headers: {
-              'Content-Type': 'application/json',
-              'Set-Cookie': 'token=' + token + '; HttpOnly; Path=/; SameSite=Strict; Max-Age=86400'
-            }
-          }
-        );
-      } else {
-        return new Response(
-          JSON.stringify({ success: false, message: '用户名或密码错误' }),
+          JSON.stringify({ 
+            needVerification: true, 
+            message: '需要安全验证' 
+          }),
           { headers: { 'Content-Type': 'application/json' } }
         );
       }
+      
+      // 用户名或密码不正确，或者没有设置验证码，不显示验证框
+      return new Response(
+        JSON.stringify({ needVerification: false }),
+        { headers: { 'Content-Type': 'application/json' } }
+      );
+    }
+    
+    if (path === '/login' && method === 'POST') {
+      const body = await request.json();
+      
+      // 先验证用户名和密码
+      if (body.username !== config.ADMIN_USERNAME || body.password !== config.ADMIN_PASSWORD) {
+        return new Response(
+          JSON.stringify({ 
+            success: false, 
+            needVerification: false, // 用户名密码错误时不显示验证码字段
+            message: '用户名或密码错误' 
+          }),
+          { headers: { 'Content-Type': 'application/json' } }
+        );
+      }
+      
+      // 如果设置了安全验证码，则需要验证
+      if (config.VERIFICATION_UUID) {
+        // 如果未提供验证码或验证码错误
+        if (!body.verificationUuid || body.verificationUuid !== config.VERIFICATION_UUID) {
+          return new Response(
+            JSON.stringify({ 
+              success: false, 
+              needVerification: true, // 明确标记需要验证码
+              message: '请输入正确的安全验证码' 
+            }),
+            { headers: { 'Content-Type': 'application/json' } }
+          );
+        }
+      }
+      
+      // 所有验证都通过，生成登录令牌
+      const token = await generateJWT(body.username, config.JWT_SECRET);
+      
+      return new Response(
+        JSON.stringify({ success: true }),
+        {
+          headers: {
+            'Content-Type': 'application/json',
+            'Set-Cookie': 'token=' + token + '; HttpOnly; Path=/; SameSite=Strict; Max-Age=86400'
+          }
+        }
+      );
     }
     
     if (path === '/logout' && (method === 'GET' || method === 'POST')) {
@@ -1690,6 +1879,7 @@ const api = {
             WECOM_AGENT_ID: newConfig.WECOM_AGENT_ID || '',
             WECOM_TO_USER: newConfig.WECOM_TO_USER || '@all',
             LOGIN_BG_COLOR: newConfig.LOGIN_BG_COLOR || '#667eea,#764ba2',
+            VERIFICATION_UUID: newConfig.VERIFICATION_UUID || '',
             ENABLED_NOTIFIERS: newConfig.ENABLED_NOTIFIERS || ['notifyx']
           };
 
@@ -1930,6 +2120,7 @@ async function getConfig(env) {
       ADMIN_USERNAME: config.ADMIN_USERNAME || 'admin',
       ADMIN_PASSWORD: config.ADMIN_PASSWORD || 'password',
       JWT_SECRET: config.JWT_SECRET || 'your-secret-key',
+      VERIFICATION_UUID: config.VERIFICATION_UUID || '',
       TG_BOT_TOKEN: config.TG_BOT_TOKEN || '',
       TG_CHAT_ID: config.TG_CHAT_ID || '',
       NOTIFYX_API_KEY: config.NOTIFYX_API_KEY || '',
@@ -1949,6 +2140,7 @@ async function getConfig(env) {
       ADMIN_USERNAME: 'admin',
       ADMIN_PASSWORD: 'password',
       JWT_SECRET: 'your-secret-key',
+      VERIFICATION_UUID: '',
       TG_BOT_TOKEN: '',
       TG_CHAT_ID: '',
       NOTIFYX_API_KEY: '',
