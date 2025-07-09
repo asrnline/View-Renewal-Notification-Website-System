@@ -2,6 +2,16 @@
 
 ##尊重开发者：二次开发而来的
 
+
+# 变量说明
+
+| 变量名 | 示例 | 必填 | 备注 | YT |
+|--------|---------|-|-----|-----|
+| AUTH_UUID | `90cd4a77-141a-43c9-991b-08263cfe9c10` |✅| 设置安全验证个人ID | |
+| SUBSCRIPTIONS_KV | 变量名称`SUBSCRIPTIONS_KV` |✅| KV命名空间|  |
+
+
+
 基于Cloudflare Workers的轻量级订阅管理系统，帮助您轻松跟踪各类订阅服务的到期时间，并通过Telegram,企业微信等发送及时提醒。
 
 ![image](https://github.com/user-attachments/assets/22ff1592-7836-4f73-aa13-24e9d43d7064)
